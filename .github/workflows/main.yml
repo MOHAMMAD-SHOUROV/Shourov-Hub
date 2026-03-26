@@ -11,11 +11,11 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      # 1. Checkout code
+      # 1. Checkout
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. Setup Node.js
+      # 2. Node setup
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -25,11 +25,11 @@ jobs:
       - name: Install pnpm
         run: npm install -g pnpm
 
-      # 4. Install dependencies
+      # 4. Install deps
       - name: Install Dependencies
         run: pnpm install
 
-      # 5. Build web (TypeScript error bypass)
+      # 5. Build (ignore TS error)
       - name: Build Web Project
         run: |
           pnpm build || true
@@ -40,26 +40,26 @@ jobs:
             cp index.html dist/ 2>/dev/null || true
           fi
 
-      # 6. Setup Java
+      # 6. Java
       - name: Setup JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      # 7. Setup Android SDK
+      # 7. Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 8. Setup Capacitor
+      # 8. Capacitor FIXED
       - name: Setup Capacitor
         run: |
-          pnpm add @capacitor/core @capacitor/cli @capacitor/android
+          pnpm add -w @capacitor/core @capacitor/cli @capacitor/android
 
           cat <<EOF > capacitor.config.json
           {
             "appId": "com.ec.app",
-            "appName": "TestAppop",
+            "appName": "TestApp",
             "webDir": "dist"
           }
           EOF
@@ -67,12 +67,10 @@ jobs:
           npx cap add android || true
           npx cap sync android
 
-      # 9. Debug (optional)
+      # 9. Debug
       - name: Debug Files
         run: |
-          echo "Root:"
           ls -la
-          echo "Dist:"
           ls -la dist || true
 
       # 10. Build APK
@@ -82,7 +80,7 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
 
-      # 11. Upload APK
+      # 11. Upload
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:

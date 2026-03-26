@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: 'Deployed API server URL (e.g. https://your-app.replit.app)'
+        required: false
+        default: ''
 
 jobs:
   build:
@@ -33,8 +39,12 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Build Web Project
+        env:
+          PORT: '3000'
+          BASE_PATH: '/'
+          VITE_API_BASE_URL: ${{ github.event.inputs.api_base_url || vars.REPLIT_APP_URL || '' }}
         run: |
-          PORT=3000 BASE_PATH=./ pnpm --filter @workspace/shourov-hub run build
+          pnpm --filter @workspace/shourov-hub run build
           echo "Build output:"
           ls -la artifacts/shourov-hub/dist/public
 
@@ -44,40 +54,41 @@ jobs:
           cp -r artifacts/shourov-hub/dist/public/. cap-workspace/www/
 
           cat > cap-workspace/package.json << 'EOF'
-          {
-            "name": "shourov-hub-android",
-            "version": "1.0.0",
-            "description": "Shourov Hub Android App",
-            "main": "index.js"
-          }
-          EOF
+{
+  "name": "shourov-hub-android",
+  "version": "1.0.0",
+  "description": "Shourov Hub Android App",
+  "main": "index.js"
+}
+EOF
 
           cat > cap-workspace/capacitor.config.json << 'EOF'
-          {
-            "appId": "com.shourovhub.app",
-            "appName": "Shourov Hub",
-            "webDir": "www",
-            "server": {
-              "androidScheme": "https",
-              "cleartext": true
-            }
-          }
-          EOF
+{
+  "appId": "com.shourovhub.app",
+  "appName": "Shourov Hub",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "hostname": "localhost",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
+EOF
 
       - name: Install Capacitor
         working-directory: cap-workspace
-        run: |
-          npm install @capacitor/core @capacitor/cli @capacitor/android
+        run: npm install @capacitor/core @capacitor/cli @capacitor/android
 
       - name: Add Android Platform
         working-directory: cap-workspace
-        run: |
-          npx cap add android
+        run: npx cap add android
 
       - name: Sync Capacitor
         working-directory: cap-workspace
-        run: |
-          npx cap sync android
+        run: npx cap sync android
 
       - name: Build Android APK
         working-directory: cap-workspace/android

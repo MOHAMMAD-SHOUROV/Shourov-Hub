@@ -1,0 +1,12 @@
+packages:
+  "framer-motion": "For stunning page transitions, micro-interactions, and fluid component reveals"
+  "date-fns": "For formatting video durations and download history timestamps"
+
+images:
+  - path: "artifacts/shourov-hub/public/images/bg-glow.png"
+    description: "A very dark background with subtle, vibrant cyan and magenta glowing neon orbs/gradients blending into pure black, highly abstract and minimal, 8k resolution"
+    aspect_ratio: "16:9"
+
+notes:
+  - The API hooks are successfully generated in lib/api-client-react.
+  - The UI uses radix-ui/shadcn patterns but implements fully custom stylized versions for the specific "premium neon dark mode" aesthetic.

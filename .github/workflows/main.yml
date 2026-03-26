@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: pnpm pnpm
+      - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -39,23 +39,24 @@ jobs:
 
       - name: Setup Capacitor Config
         run: |
-          npm install @capacitor/core @capacitor/cli @capacitor/android
+          mkdir -p cap-tools
+          npm install --prefix cap-tools @capacitor/core @capacitor/cli @capacitor/android
 
           cat > capacitor.config.json << 'CAPEOF'
-          {
-            "appId": "com.ec.aoo",
-            "appName": "testapp",
-            "webDir": "artifacts/shourov-hub/dist/public",
-            "server": {
-              "androidScheme": "https",
-              "hostname": "localhost",
-              "cleartext": true
-            }
-          }
-          CAPEOF
+{
+  "appId": "com.ec.aoo",
+  "appName": "testapp",
+  "webDir": "artifacts/shourov-hub/dist/public",
+  "server": {
+    "androidScheme": "https",
+    "hostname": "localhost",
+    "cleartext": true
+  }
+}
+CAPEOF
 
-          ./node_modules/.bin/cap add android
-          ./node_modules/.bin/cap sync android
+          ./cap-tools/node_modules/.bin/cap add android
+          ./cap-tools/node_modules/.bin/cap sync android
 
       - name: Build Android APK
         run: |

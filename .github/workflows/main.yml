@@ -1,13 +1,13 @@
 name: Build Android APK
 
-on: [push]
+on:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout Code
@@ -19,10 +19,10 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Set up Node.js
+      - name: Set up Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -30,58 +30,64 @@ jobs:
           version: 10
 
       - name: Install Dependencies
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build Web Project
         run: |
           PORT=3000 BASE_PATH=./ pnpm --filter @workspace/shourov-hub run build
-          ls artifacts/shourov-hub/dist/public
+          echo "Build output:"
+          ls -la artifacts/shourov-hub/dist/public
 
       - name: Setup Capacitor Workspace
         run: |
           mkdir -p cap-workspace/www
           cp -r artifacts/shourov-hub/dist/public/. cap-workspace/www/
 
-          python3 -c "
-import json, os
+          cat > cap-workspace/package.json << 'EOF'
+          {
+            "name": "shourov-hub-android",
+            "version": "1.0.0",
+            "description": "Shourov Hub Android App",
+            "main": "index.js"
+          }
+          EOF
 
-pkg = {
-  'name': 'cap-app',
-  'version': '1.0.0',
-  'description': '',
-  'main': 'index.js',
-  'dependencies': {}
-}
-with open('cap-workspace/package.json', 'w') as f:
-    json.dump(pkg, f, indent=2)
+          cat > cap-workspace/capacitor.config.json << 'EOF'
+          {
+            "appId": "com.shourovhub.app",
+            "appName": "Shourov Hub",
+            "webDir": "www",
+            "server": {
+              "androidScheme": "https",
+              "cleartext": true
+            }
+          }
+          EOF
 
-cap_cfg = {
-  'appId': 'com.ec.aoo',
-  'appName': 'ShourovHub',
-  'webDir': 'www',
-  'server': {
-    'androidScheme': 'https',
-    'hostname': 'localhost',
-    'cleartext': True
-  }
-}
-with open('cap-workspace/capacitor.config.json', 'w') as f:
-    json.dump(cap_cfg, f, indent=2)
-"
-
-          cd cap-workspace
+      - name: Install Capacitor
+        working-directory: cap-workspace
+        run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
+
+      - name: Add Android Platform
+        working-directory: cap-workspace
+        run: |
           npx cap add android
+
+      - name: Sync Capacitor
+        working-directory: cap-workspace
+        run: |
           npx cap sync android
 
       - name: Build Android APK
+        working-directory: cap-workspace/android
         run: |
-          cd cap-workspace/android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Mobile-App-APK
+          name: Shourov-Hub-APK
           path: cap-workspace/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30

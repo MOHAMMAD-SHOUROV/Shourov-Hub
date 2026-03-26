@@ -1,138 +1,68 @@
 name: Build Android APK
 
-on: [push]
-
+on:
+  push:
 
 jobs:
-
   build:
-
     runs-on: ubuntu-latest
 
-    env:
-
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
     steps:
-
+      # 1. Checkout code
       - name: Checkout Code
-
         uses: actions/checkout@v4
 
-
-      - name: Set up JDK 21
-
-        uses: actions/setup-java@v4
-
+      # 2. Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
+          node-version: 20
 
-          java-version: '21'
+      # 3. Install dependencies
+      - name: Install Dependencies
+        run: npm install
 
+      # 4. Build web project
+      - name: Build Web Project
+        run: npm run build
+
+      # 5. Setup Java (needed for Android build)
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
           distribution: 'temurin'
 
+      # 6. Setup Android SDK
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Install Dependencies
-
-        run: npm install --force
-
-
-      - name: Build Web Project
-
+      # 7. Install Capacitor + Config
+      - name: Setup Capacitor
         run: |
-
-         
-
-          npm run build -- --base=./ || npm run build || true
-
-          if [ ! -d "dist" ]; then
-
-            mkdir -p dist
-
-            cp index.html dist/ 2>/dev/null || true
-
-          fi
-
-
-      - name: Setup Capacitor Config
-
-        run: |
-
           npm install @capacitor/core @capacitor/cli @capacitor/android
 
-         
-
-         
-
-         
-
           cat <<EOF > capacitor.config.json
-
           {
-
-            "appId": "com.ec.aoo",
-
-            "appName": "testapp",
-
-            "webDir": "dist",
-
-            "server": {
-
-              "androidScheme": "https",
-
-              "hostname": "localhost",
-
-              "cleartext": true
-
-            }
-
+            "appId": "com.ec.app",
+            "appName": "ShourovHub",
+            "webDir": "dist"
           }
-
           EOF
 
-         
-
           npx cap add android || true
-
           npx cap sync android
 
-
+      # 8. Build APK
       - name: Build Android APK
-
         run: |
-
           cd android
-
-         
-
-         
-
-          echo "configurations.all {
-
-              resolutionStrategy.eachDependency { DependencyResolveDetails details ->
-
-                  if (details.requested.group == 'org.jetbrains.kotlin') {
-
-                      details.useVersion '1.8.22'
-
-                  }
-
-              }
-
-          }" >> app/build.gradle
-
-         
-
           chmod +x gradlew
-
           ./gradlew assembleDebug
 
-
+      # 9. Upload APK
       - name: Upload APK
-
         uses: actions/upload-artifact@v4
-
         with:
-
-          name: Mobile-App-APK
-
+          name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk

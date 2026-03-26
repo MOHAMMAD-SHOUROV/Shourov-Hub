@@ -1,57 +1,58 @@
 name: Build Android APK
 
-on:
-  push:
+on: [push]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '20'
 
       - name: Install pnpm
-        run: npm install -g pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - name: Install Dependencies
         run: pnpm install
 
       - name: Build Web Project
         run: |
-          pnpm build || true
-          mkdir -p dist
+          PORT=3000 BASE_PATH=./ pnpm --filter @workspace/shourov-hub run build
+          ls artifacts/shourov-hub/dist/public
 
-          echo '<!DOCTYPE html>' > dist/index.html
-          echo '<html>' >> dist/index.html
-          echo '<head><meta charset="UTF-8"><title>App</title></head>' >> dist/index.html
-          echo '<body><h1>App Running</h1></body>' >> dist/index.html
-          echo '</html>' >> dist/index.html
-
-      # ✅ FIXED JAVA VERSION
-      - name: Setup JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Setup Capacitor
+      - name: Setup Capacitor Config
         run: |
-          pnpm add -w @capacitor/core @capacitor/cli @capacitor/android
+          npm install -g @capacitor/core @capacitor/cli @capacitor/android
 
-          echo '{
-            "appId": "com.ec.app",
-            "appName": "TestApp",
-            "webDir": "dist"
-          }' > capacitor.config.json
+          cat <<EOF > capacitor.config.json
+          {
+            "appId": "com.ec.aoo",
+            "appName": "testapp",
+            "webDir": "artifacts/shourov-hub/dist/public",
+            "server": {
+              "androidScheme": "https",
+              "hostname": "localhost",
+              "cleartext": true
+            }
+          }
+          EOF
 
           npx cap add android || true
           npx cap sync android
@@ -59,11 +60,20 @@ jobs:
       - name: Build Android APK
         run: |
           cd android
+
+          echo "configurations.all {
+              resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+                  if (details.requested.group == 'org.jetbrains.kotlin') {
+                      details.useVersion '1.8.22'
+                  }
+              }
+          }" >> app/build.gradle
+
           chmod +x gradlew
           ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: android-apk
+          name: Mobile-App-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk

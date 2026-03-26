@@ -7,37 +7,45 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
     steps:
-      # 1. Checkout code
+      # 1. Checkout
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. Setup Node.js
+      # 2. Setup Node (latest stable)
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       # 3. Install dependencies
       - name: Install Dependencies
         run: npm install
 
-      # 4. Build web project
+      # 4. Build web app
       - name: Build Web Project
-        run: npm run build
+        run: |
+          npm run build
+          if [ ! -d "dist" ]; then
+            echo "❌ dist folder not found! Build failed."
+            exit 1
+          fi
 
-      # 5. Setup Java (needed for Android build)
-      - name: Set up JDK 17
+      # 5. Setup Java (Android requires stable version)
+      - name: Setup JDK
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          distribution: temurin
+          java-version: 17
 
       # 6. Setup Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 7. Install Capacitor + Config
+      # 7. Setup Capacitor
       - name: Setup Capacitor
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
@@ -45,7 +53,7 @@ jobs:
           cat <<EOF > capacitor.config.json
           {
             "appId": "com.ec.app",
-            "appName": "ShourovHub",
+            "appName": "TestApp",
             "webDir": "dist"
           }
           EOF
@@ -53,16 +61,24 @@ jobs:
           npx cap add android || true
           npx cap sync android
 
-      # 8. Build APK
+      # 8. Debug: show files (very helpful)
+      - name: Debug Project Structure
+        run: |
+          echo "📁 Root files:"
+          ls -la
+          echo "📁 Dist files:"
+          ls -la dist || true
+
+      # 9. Build APK
       - name: Build Android APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --stacktrace
 
-      # 9. Upload APK
+      # 10. Upload APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
+          name: android-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk

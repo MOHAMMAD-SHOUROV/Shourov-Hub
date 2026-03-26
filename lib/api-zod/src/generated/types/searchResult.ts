@@ -9,10 +9,10 @@
 export interface SearchResult {
   id: string;
   title: string;
-  thumbnail?: string;
-  duration?: number;
+  thumbnail?: string | null;
+  duration?: number | null;
   platform: string;
   url: string;
-  uploader?: string;
-  viewCount?: number;
+  uploader?: string | null;
+  viewCount?: number | null;
 }

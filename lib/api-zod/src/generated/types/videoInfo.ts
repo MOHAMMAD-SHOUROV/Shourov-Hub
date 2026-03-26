@@ -9,8 +9,8 @@ import type { VideoFormat } from "./videoFormat";
 
 export interface VideoInfo {
   title: string;
-  thumbnail?: string;
-  duration?: number;
+  thumbnail?: string | null;
+  duration?: number | null;
   platform: string;
   formats: VideoFormat[];
   originalUrl: string;

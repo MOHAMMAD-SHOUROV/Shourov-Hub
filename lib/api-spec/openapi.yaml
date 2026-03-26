@@ -129,16 +129,20 @@ components:
           type: string
         thumbnail:
           type: string
+          nullable: true
         duration:
           type: number
+          nullable: true
         platform:
           type: string
         url:
           type: string
         uploader:
           type: string
+          nullable: true
         viewCount:
           type: number
+          nullable: true
       required:
         - id
         - title
@@ -174,6 +178,7 @@ components:
           type: string
         filesize:
           type: number
+          nullable: true
         type:
           type: string
           enum: [video, audio]
@@ -190,8 +195,10 @@ components:
           type: string
         thumbnail:
           type: string
+          nullable: true
         duration:
           type: number
+          nullable: true
         platform:
           type: string
         formats:

@@ -29,12 +29,12 @@ export const SearchVideosResponse = zod.object({
     zod.object({
       id: zod.string(),
       title: zod.string(),
-      thumbnail: zod.string().optional(),
-      duration: zod.number().optional(),
+      thumbnail: zod.string().nullish(),
+      duration: zod.number().nullish(),
       platform: zod.string(),
       url: zod.string(),
-      uploader: zod.string().optional(),
-      viewCount: zod.number().optional(),
+      uploader: zod.string().nullish(),
+      viewCount: zod.number().nullish(),
     }),
   ),
 });
@@ -49,8 +49,8 @@ export const GetVideoInfoBody = zod.object({
 
 export const GetVideoInfoResponse = zod.object({
   title: zod.string(),
-  thumbnail: zod.string().optional(),
-  duration: zod.number().optional(),
+  thumbnail: zod.string().nullish(),
+  duration: zod.number().nullish(),
   platform: zod.string(),
   formats: zod.array(
     zod.object({
@@ -58,7 +58,7 @@ export const GetVideoInfoResponse = zod.object({
       label: zod.string(),
       quality: zod.string(),
       ext: zod.string(),
-      filesize: zod.number().optional(),
+      filesize: zod.number().nullish(),
       type: zod.enum(["video", "audio"]),
     }),
   ),

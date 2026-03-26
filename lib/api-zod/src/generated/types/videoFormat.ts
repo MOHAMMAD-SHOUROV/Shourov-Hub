@@ -12,6 +12,6 @@ export interface VideoFormat {
   label: string;
   quality: string;
   ext: string;
-  filesize?: number;
+  filesize?: number | null;
   type: VideoFormatType;
 }

@@ -16,8 +16,8 @@ jobs:
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
-          distribution: 'temurin'
+          setup-java: '21'
+          didistribution'temurin'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -37,33 +37,43 @@ jobs:
           PORT=3000 BASE_PATH=./ pnpm --filter @workspace/shourov-hub run build
           ls artifacts/shourov-hub/dist/public
 
-      - name: Setup Capacitor Config
+      - name: Setup Capacitor Workspace
         run: |
-          mkdir -p cap-tools
-          npm install --prefix cap-tools @capacitor/core @capacitor/cli @capacitor/android
+          mkdir -p cap-workspace/www
 
-          python3 -c "
-          import json
-          config = {
-            'appId': 'com.ec.aoo',
-            'appName': 'testapp',
-            'webDir': 'artifacts/shourov-hub/dist/public',
-            'server': {
-              'androidScheme': 'https',
-              'hostname': 'localhost',
-              'cleartext': True
-            }
-          }
-          with open('capacitor.config.json', 'w') as f:
-              json.dump(config, f, indent=2)
-          "
+          cp -r artifacts/shourov-hub/dist/public/. cap-workspace/www/
 
-          ./cap-tools/node_modules/.bin/cap add android
-          ./cap-tools/node_modules/.bin/cap sync android
+          cat > cap-workspace/package.json << 'EOF'
+{
+  "name": "cap-app",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "dependencies": {}
+}
+EOF
+
+          cat > cap-workspace/capacitor.config.json << 'EOF'
+{
+  "appId": "com.ec.aoo",
+  "appName": "testapp",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "hostname": "localhost",
+    "cleartext": true
+  }
+}
+EOF
+
+          cd cap-workspace
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+          npx cap add android
+          npx cap sync android
 
       - name: Build Android APK
         run: |
-          cd android
+          cd cap-workspace/android
           chmod +x gradlew
           ./gradlew assembleDebug
 
@@ -71,4 +81,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Mobile-App-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: cap-workspace/android/app/build/outputs/apk/debug/app-debug.apk

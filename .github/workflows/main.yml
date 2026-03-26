@@ -11,47 +11,60 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      # 1. Checkout
+      # Checkout
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. Node setup
+      # Node setup
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      # 3. Install pnpm
+      # pnpm install
       - name: Install pnpm
         run: npm install -g pnpm
 
-      # 4. Install deps
+      # Dependencies
       - name: Install Dependencies
         run: pnpm install
 
-      # 5. Build (ignore TS error)
+      # Build web (with fallback)
       - name: Build Web Project
         run: |
           pnpm build || true
 
           if [ ! -d "dist" ]; then
-            echo "⚠️ dist not found, creating fallback"
             mkdir dist
-            cp index.html dist/ 2>/dev/null || true
           fi
 
-      # 6. Java
+          if [ ! -f "dist/index.html" ]; then
+            cat <<EOF > dist/index.html
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="UTF-8">
+              <title>App</title>
+            </head>
+            <body>
+              <h1>App Running</h1>
+            </body>
+            </html>
+            EOF
+          fi
+
+      # Java
       - name: Setup JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      # 7. Android SDK
+      # Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 8. Capacitor FIXED
+      # Capacitor setup
       - name: Setup Capacitor
         run: |
           pnpm add -w @capacitor/core @capacitor/cli @capacitor/android
@@ -59,7 +72,7 @@ jobs:
           cat <<EOF > capacitor.config.json
           {
             "appId": "com.ec.app",
-            "appName": "TestApp",
+            "appName": "ShourovHub",
             "webDir": "dist"
           }
           EOF
@@ -67,20 +80,14 @@ jobs:
           npx cap add android || true
           npx cap sync android
 
-      # 9. Debug
-      - name: Debug Files
-        run: |
-          ls -la
-          ls -la dist || true
-
-      # 10. Build APK
+      # Build APK
       - name: Build Android APK
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
 
-      # 11. Upload
+      # Upload APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:

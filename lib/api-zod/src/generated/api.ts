@@ -16,6 +16,30 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
+ * Search for videos by keyword using YouTube search
+ * @summary Search videos
+ */
+export const SearchVideosBody = zod.object({
+  query: zod.string().describe("Search query"),
+  limit: zod.number().optional().describe("Max number of results"),
+});
+
+export const SearchVideosResponse = zod.object({
+  results: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      thumbnail: zod.string().optional(),
+      duration: zod.number().optional(),
+      platform: zod.string(),
+      url: zod.string(),
+      uploader: zod.string().optional(),
+      viewCount: zod.number().optional(),
+    }),
+  ),
+});
+
+/**
  * Fetch video information from a URL
  * @summary Get video info
  */

@@ -25,6 +25,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /download/search:
+    post:
+      operationId: searchVideos
+      tags: [download]
+      summary: Search videos
+      description: Search for videos by keyword using YouTube search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResults"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /download/info:
     post:
       operationId: getVideoInfo
@@ -84,6 +109,50 @@ components:
           type: string
       required:
         - status
+    SearchRequest:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search query
+        limit:
+          type: number
+          description: Max number of results
+      required:
+        - query
+    SearchResult:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        thumbnail:
+          type: string
+        duration:
+          type: number
+        platform:
+          type: string
+        url:
+          type: string
+        uploader:
+          type: string
+        viewCount:
+          type: number
+      required:
+        - id
+        - title
+        - url
+        - platform
+    SearchResults:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchResult"
+      required:
+        - results
     VideoInfoRequest:
       type: object
       properties:

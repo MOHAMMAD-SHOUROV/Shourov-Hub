@@ -21,6 +21,8 @@ import type {
   DownloadResult,
   ErrorResponse,
   HealthStatus,
+  SearchRequest,
+  SearchResults,
   VideoInfo,
   VideoInfoRequest,
 } from "./api.schemas";
@@ -109,6 +111,93 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Search for videos by keyword using YouTube search
+ * @summary Search videos
+ */
+export const getSearchVideosUrl = () => {
+  return `/api/download/search`;
+};
+
+export const searchVideos = async (
+  searchRequest: SearchRequest,
+  options?: RequestInit,
+): Promise<SearchResults> => {
+  return customFetch<SearchResults>(getSearchVideosUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(searchRequest),
+  });
+};
+
+export const getSearchVideosMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof searchVideos>>,
+    TError,
+    { data: BodyType<SearchRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof searchVideos>>,
+  TError,
+  { data: BodyType<SearchRequest> },
+  TContext
+> => {
+  const mutationKey = ["searchVideos"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof searchVideos>>,
+    { data: BodyType<SearchRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return searchVideos(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SearchVideosMutationResult = NonNullable<
+  Awaited<ReturnType<typeof searchVideos>>
+>;
+export type SearchVideosMutationBody = BodyType<SearchRequest>;
+export type SearchVideosMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Search videos
+ */
+export const useSearchVideos = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof searchVideos>>,
+    TError,
+    { data: BodyType<SearchRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof searchVideos>>,
+  TError,
+  { data: BodyType<SearchRequest> },
+  TContext
+> => {
+  return useMutation(getSearchVideosMutationOptions(options));
+};
 
 /**
  * Fetch video information from a URL

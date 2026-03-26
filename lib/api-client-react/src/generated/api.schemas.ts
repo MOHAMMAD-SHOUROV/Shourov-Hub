@@ -9,6 +9,28 @@ export interface HealthStatus {
   status: string;
 }
 
+export interface SearchRequest {
+  /** Search query */
+  query: string;
+  /** Max number of results */
+  limit?: number;
+}
+
+export interface SearchResult {
+  id: string;
+  title: string;
+  thumbnail?: string;
+  duration?: number;
+  platform: string;
+  url: string;
+  uploader?: string;
+  viewCount?: number;
+}
+
+export interface SearchResults {
+  results: SearchResult[];
+}
+
 export interface VideoInfoRequest {
   /** The video URL to fetch info for */
   url: string;

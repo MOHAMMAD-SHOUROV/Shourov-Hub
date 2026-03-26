@@ -1,7 +1,14 @@
 import { Router, type IRouter } from "express";
 import { exec } from "child_process";
 import { promisify } from "util";
-import { GetVideoInfoBody, GetVideoInfoResponse, StartDownloadBody, StartDownloadResponse } from "@workspace/api-zod";
+import {
+  GetVideoInfoBody,
+  GetVideoInfoResponse,
+  StartDownloadBody,
+  StartDownloadResponse,
+  SearchVideosBody,
+  SearchVideosResponse,
+} from "@workspace/api-zod";
 
 const execAsync = promisify(exec);
 const router: IRouter = Router();
@@ -18,6 +25,68 @@ function detectPlatform(url: string): string {
   if (url.includes("twitch.tv")) return "Twitch";
   return "Unknown";
 }
+
+router.post("/search", async (req, res) => {
+  try {
+    const parsed = SearchVideosBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "validation_error", message: "Invalid request body" });
+      return;
+    }
+
+    const { query, limit = 8 } = parsed.data;
+    const safeQuery = query.replace(/"/g, '\\"');
+    const count = Math.min(Number(limit) || 8, 15);
+
+    let output: string;
+    try {
+      const result = await execAsync(
+        `yt-dlp "ytsearch${count}:${safeQuery}" --dump-json --flat-playlist --no-playlist --socket-timeout 30`,
+        { timeout: 30000 }
+      );
+      output = result.stdout;
+    } catch (err: unknown) {
+      req.log.warn({ err, query }, "yt-dlp search failed");
+      res.status(400).json({
+        error: "search_failed",
+        message: "Search failed. Please try again.",
+      });
+      return;
+    }
+
+    const lines = output.trim().split("\n").filter(Boolean);
+    const results = [];
+
+    for (const line of lines) {
+      try {
+        const item = JSON.parse(line) as Record<string, unknown>;
+        const videoId = typeof item.id === "string" ? item.id : String(item.id ?? "");
+        const url = typeof item.url === "string" ? item.url : `https://www.youtube.com/watch?v=${videoId}`;
+
+        results.push({
+          id: videoId,
+          title: typeof item.title === "string" ? item.title : "Unknown",
+          thumbnail: typeof item.thumbnail === "string"
+            ? item.thumbnail
+            : `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+          duration: typeof item.duration === "number" ? item.duration : undefined,
+          platform: "YouTube",
+          url,
+          uploader: typeof item.uploader === "string" ? item.uploader : undefined,
+          viewCount: typeof item.view_count === "number" ? item.view_count : undefined,
+        });
+      } catch {
+        /* skip malformed entries */
+      }
+    }
+
+    const response = SearchVideosResponse.parse({ results });
+    res.json(response);
+  } catch (err) {
+    req.log.error({ err }, "Error searching videos");
+    res.status(500).json({ error: "internal_error", message: "An internal error occurred" });
+  }
+});
 
 router.post("/info", async (req, res) => {
   try {
@@ -93,9 +162,7 @@ router.post("/info", async (req, res) => {
     }
 
     if (formats.length === 0) {
-      const bestVideo = rawFormats.find(
-        (f) => f.vcodec !== "none" && f.acodec !== "none"
-      );
+      const bestVideo = rawFormats.find((f) => f.vcodec !== "none" && f.acodec !== "none");
       if (bestVideo) {
         formats.push({
           id: "video_best",
@@ -117,23 +184,8 @@ router.post("/info", async (req, res) => {
       }
     }
 
-    formats.push({
-      id: "audio_mp3",
-      label: "MP3 Audio",
-      quality: "128kbps",
-      ext: "mp3",
-      filesize: null,
-      type: "audio",
-    });
-
-    formats.push({
-      id: "audio_m4a",
-      label: "M4A Audio",
-      quality: "High Quality",
-      ext: "m4a",
-      filesize: null,
-      type: "audio",
-    });
+    formats.push({ id: "audio_mp3", label: "MP3 Audio", quality: "128kbps", ext: "mp3", filesize: null, type: "audio" });
+    formats.push({ id: "audio_m4a", label: "M4A Audio", quality: "High Quality", ext: "m4a", filesize: null, type: "audio" });
 
     const videoInfo = GetVideoInfoResponse.parse({
       title: typeof info.title === "string" ? info.title : "Unknown Video",
@@ -202,10 +254,7 @@ router.post("/start", async (req, res) => {
     }
 
     if (!downloadUrl) {
-      res.status(400).json({
-        error: "no_url",
-        message: "No download URL available for this format.",
-      });
+      res.status(400).json({ error: "no_url", message: "No download URL available for this format." });
       return;
     }
 

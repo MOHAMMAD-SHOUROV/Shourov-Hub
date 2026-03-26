@@ -16,7 +16,7 @@ jobs:
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          setup-java: '21'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Set up Node.js
@@ -40,31 +40,34 @@ jobs:
       - name: Setup Capacitor Workspace
         run: |
           mkdir -p cap-workspace/www
-
           cp -r artifacts/shourov-hub/dist/public/. cap-workspace/www/
 
-          cat > cap-workspace/package.json << 'EOF'
-{
-  "name": "cap-app",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "dependencies": {}
-}
-EOF
+          python3 -c "
+import json, os
 
-          cat > cap-workspace/capacitor.config.json << 'EOF'
-{
-  "appId": "com.ec.aoo",
-  "appName": "testapp",
-  "webDir": "www",
-  "server": {
-    "androidScheme": "https",
-    "hostname": "localhost",
-    "cleartext": true
+pkg = {
+  'name': 'cap-app',
+  'version': '1.0.0',
+  'description': '',
+  'main': 'index.js',
+  'dependencies': {}
+}
+with open('cap-workspace/package.json', 'w') as f:
+    json.dump(pkg, f, indent=2)
+
+cap_cfg = {
+  'appId': 'com.ec.aoo',
+  'appName': 'ShourovHub',
+  'webDir': 'www',
+  'server': {
+    'androidScheme': 'https',
+    'hostname': 'localhost',
+    'cleartext': True
   }
 }
-EOF
+with open('cap-workspace/capacitor.config.json', 'w') as f:
+    json.dump(cap_cfg, f, indent=2)
+"
 
           cd cap-workspace
           npm install @capacitor/core @capacitor/cli @capacitor/android

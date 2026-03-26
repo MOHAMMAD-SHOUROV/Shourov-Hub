@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install pnpm
+      - name: pnpm pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -39,9 +39,9 @@ jobs:
 
       - name: Setup Capacitor Config
         run: |
-          npm install -g @capacitor/core @capacitor/cli @capacitor/android
+          npm install @capacitor/core @capacitor/cli @capacitor/android
 
-          cat <<EOF > capacitor.config.json
+          cat > capacitor.config.json << 'CAPEOF'
           {
             "appId": "com.ec.aoo",
             "appName": "testapp",
@@ -52,10 +52,10 @@ jobs:
               "cleartext": true
             }
           }
-          EOF
+          CAPEOF
 
-          npx cap add android || true
-          npx cap sync android
+          ./node_modules/.bin/cap add android
+          ./node_modules/.bin/cap sync android
 
       - name: Build Android APK
         run: |

@@ -591,14 +591,14 @@ export default function Home() {
               </div>
 
               {/* Platforms */}
-              <div className="flex-shrink-0 flex flex-wrap justify-center gap-2 mb-5">
+              <div className="flex-shrink-0 flex flex-wrap justify-center gap-2 mb-4">
                 {platforms.map(p => (
                   <span key={p} className="text-[11px] px-3 py-1 rounded-full bg-white/5 border border-white/8 text-muted-foreground">{p}</span>
                 ))}
               </div>
 
               {/* Contact */}
-              <div className="flex-shrink-0 flex flex-col items-center gap-2 mt-auto">
+              <div className="flex-shrink-0 flex flex-col items-center gap-2 mb-2">
                 <p className="text-[11px] text-muted-foreground">Problem? Contact us:</p>
                 <div className="flex gap-2.5">
                   <a href="https://www.facebook.com/profile.php?id=61588161951831" target="_blank" rel="noreferrer"

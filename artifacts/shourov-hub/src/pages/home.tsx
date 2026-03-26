@@ -6,7 +6,7 @@ import {
   Search, Clock, Eye, X, Maximize2, Volume2, VolumeX,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useStartDownload, useSearchVideos, useGetVideoInfo } from "@workspace/api-client-react";
+import { useSearchVideos, useGetVideoInfo } from "@workspace/api-client-react";
 import type { VideoInfo, VideoFormat, SearchResult } from "@workspace/api-client-react/src/generated/api.schemas";
 import { useDownloadHistory } from "@/hooks/use-history";
 
@@ -327,33 +327,59 @@ export default function Home() {
     },
   });
 
-  const { mutate: startDownload, isPending: isDownloading } = useStartDownload({
-    mutation: {
-      onSuccess: (data) => {
-        if (sheetVideoInfo) {
-          addHistoryItem({
-            title: sheetVideoInfo.title,
-            platform: sheetVideoInfo.platform,
-            thumbnail: sheetVideoInfo.thumbnail,
-            url: sheetVideoInfo.originalUrl,
-            format: data.filename || "download",
-          });
-        }
-        toast({ title: "Download Started!", description: "File is saving to your device." });
-        const a = document.createElement("a");
-        a.href = data.downloadUrl;
-        a.download = data.filename || "download";
-        a.target = "_blank";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => setSheetOpen(false), 900);
-      },
-      onError: (err) => {
-        toast({ variant: "destructive", title: "Download Failed", description: (err as Error).message || "Try again." });
-      },
-    },
-  });
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const startDownload = useCallback(async (formatId: string, type: "video" | "audio") => {
+    if (!sheetVideoInfo) return;
+    setIsDownloading(true);
+    try {
+      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+      toast({ title: "Preparing download…", description: "This may take a moment. Please wait." });
+
+      const resp = await fetch(`${base}/api/download/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: sheetVideoInfo.originalUrl, formatId, type }),
+      });
+
+      if (!resp.ok) {
+        let errMsg = "Download failed. Please try again.";
+        try { const j = await resp.json() as { message?: string }; errMsg = j.message || errMsg; } catch { /* ignore */ }
+        throw new Error(errMsg);
+      }
+
+      // Get filename from content-disposition header
+      const cd = resp.headers.get("content-disposition") || "";
+      let filename = "download";
+      const m = cd.match(/filename\*?=(?:UTF-8'')?([^;]+)/i);
+      if (m) filename = decodeURIComponent(m[1].replace(/^"|"$/g, ""));
+
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
+
+      addHistoryItem({
+        title: sheetVideoInfo.title,
+        platform: sheetVideoInfo.platform,
+        thumbnail: sheetVideoInfo.thumbnail,
+        url: sheetVideoInfo.originalUrl,
+        format: filename,
+      });
+
+      toast({ title: "Download Complete!", description: "File saved to your device." });
+      setTimeout(() => setSheetOpen(false), 900);
+    } catch (err) {
+      toast({ variant: "destructive", title: "Download Failed", description: (err as Error).message || "Try again." });
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [sheetVideoInfo, addHistoryItem, toast, setSheetOpen]);
 
   const openSheet = useCallback((url: string) => {
     setPendingUrl(url);
@@ -657,10 +683,7 @@ export default function Home() {
         onClose={() => setSheetOpen(false)}
         videoInfo={sheetVideoInfo}
         isLoadingInfo={isLoadingSheet}
-        onDownload={(fmtId, type) => {
-          if (!sheetVideoInfo) return;
-          startDownload({ data: { url: sheetVideoInfo.originalUrl, formatId: fmtId, type } });
-        }}
+        onDownload={(fmtId, type) => startDownload(fmtId, type)}
         isDownloading={isDownloading}
         pendingUrl={pendingUrl}
       />

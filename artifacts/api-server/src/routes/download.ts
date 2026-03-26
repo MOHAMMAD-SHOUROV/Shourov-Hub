@@ -1,6 +1,9 @@
 import { Router, type IRouter } from "express";
-import { exec } from "child_process";
+import { exec, spawn } from "child_process";
 import { promisify } from "util";
+import { createReadStream, statSync, existsSync } from "fs";
+import { unlink, mkdir, readdir } from "fs/promises";
+import { join } from "path";
 import {
   GetVideoInfoBody,
   GetVideoInfoResponse,
@@ -13,6 +16,17 @@ import {
 const execAsync = promisify(exec);
 const router: IRouter = Router();
 
+/* ── use the latest yt-dlp if available ──────────────────── */
+const YTDLP = existsSync("/tmp/yt-dlp-new") ? "/tmp/yt-dlp-new" : "yt-dlp";
+
+/* ── shared tmp dir ──────────────────────────────────────── */
+const TMP_DIR = "/tmp/shourov-dl";
+
+async function ensureTmpDir() {
+  await mkdir(TMP_DIR, { recursive: true });
+}
+
+/* ── detect platform ─────────────────────────────────────── */
 function detectPlatform(url: string): string {
   if (url.includes("youtube.com") || url.includes("youtu.be")) return "YouTube";
   if (url.includes("tiktok.com")) return "TikTok";
@@ -26,6 +40,36 @@ function detectPlatform(url: string): string {
   return "Unknown";
 }
 
+function isYouTube(url: string) {
+  return url.includes("youtube.com") || url.includes("youtu.be");
+}
+
+/* ── extra args for YouTube (bypass SABR) ────────────────── */
+function youtubeExtraArgs(url: string): string {
+  if (!isYouTube(url)) return "";
+  return `--extractor-args "youtube:player_client=ios,mweb" `;
+}
+
+/* ── clean up old files in tmp dir ───────────────────────── */
+async function cleanupOldFiles() {
+  try {
+    const files = await readdir(TMP_DIR);
+    const now = Date.now();
+    await Promise.all(
+      files.map(async (f) => {
+        const fp = join(TMP_DIR, f);
+        try {
+          const st = statSync(fp);
+          if (now - st.mtimeMs > 30 * 60 * 1000) await unlink(fp); // older than 30 min
+        } catch { /* ignore */ }
+      })
+    );
+  } catch { /* ignore */ }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   SEARCH
+───────────────────────────────────────────────────────────── */
 router.post("/search", async (req, res) => {
   try {
     const parsed = SearchVideosBody.safeParse(req.body);
@@ -41,16 +85,13 @@ router.post("/search", async (req, res) => {
     let output: string;
     try {
       const result = await execAsync(
-        `yt-dlp "ytsearch${count}:${safeQuery}" --dump-json --flat-playlist --no-playlist --socket-timeout 30`,
-        { timeout: 30000 }
+        `${YTDLP} "ytsearch${count}:${safeQuery}" --dump-json --flat-playlist --no-playlist --socket-timeout 30`,
+        { timeout: 35000 }
       );
       output = result.stdout;
-    } catch (err: unknown) {
-      req.log.warn({ err, query }, "yt-dlp search failed");
-      res.status(400).json({
-        error: "search_failed",
-        message: "Search failed. Please try again.",
-      });
+    } catch (err) {
+      req.log.warn({ err, query }, "search failed");
+      res.status(400).json({ error: "search_failed", message: "Search failed. Please try again." });
       return;
     }
 
@@ -62,7 +103,6 @@ router.post("/search", async (req, res) => {
         const item = JSON.parse(line) as Record<string, unknown>;
         const videoId = typeof item.id === "string" ? item.id : String(item.id ?? "");
         const url = typeof item.url === "string" ? item.url : `https://www.youtube.com/watch?v=${videoId}`;
-
         results.push({
           id: videoId,
           title: typeof item.title === "string" ? item.title : "Unknown",
@@ -75,9 +115,7 @@ router.post("/search", async (req, res) => {
           uploader: typeof item.uploader === "string" ? item.uploader : undefined,
           viewCount: typeof item.view_count === "number" ? item.view_count : undefined,
         });
-      } catch {
-        /* skip malformed entries */
-      }
+      } catch { /* skip */ }
     }
 
     const response = SearchVideosResponse.parse({ results });
@@ -88,6 +126,9 @@ router.post("/search", async (req, res) => {
   }
 });
 
+/* ─────────────────────────────────────────────────────────────
+   INFO
+───────────────────────────────────────────────────────────── */
 router.post("/info", async (req, res) => {
   try {
     const parsed = GetVideoInfoBody.safeParse(req.body);
@@ -97,15 +138,16 @@ router.post("/info", async (req, res) => {
     }
 
     const { url } = parsed.data;
+    const extra = youtubeExtraArgs(url);
 
     let ytDlpOutput: string;
     try {
       const result = await execAsync(
-        `yt-dlp --dump-json --no-playlist --socket-timeout 30 "${url.replace(/"/g, '\\"')}"`,
+        `${YTDLP} --dump-json --no-playlist --socket-timeout 30 ${extra}"${url.replace(/"/g, '\\"')}"`,
         { timeout: 60000 }
       );
       ytDlpOutput = result.stdout;
-    } catch (err: unknown) {
+    } catch (err) {
       req.log.warn({ err, url }, "yt-dlp failed to fetch video info");
       res.status(400).json({
         error: "fetch_failed",
@@ -126,35 +168,21 @@ router.post("/info", async (req, res) => {
       ? (info.formats as Array<Record<string, unknown>>)
       : [];
 
-    interface FormatObj {
-      id: string;
-      label: string;
-      quality: string;
-      ext: string;
-      filesize: number | null;
-      type: "video" | "audio";
-    }
-
+    interface FormatObj { id: string; label: string; quality: string; ext: string; filesize: number | null; type: "video" | "audio"; }
     const seen = new Set<string>();
     const formats: FormatObj[] = [];
 
-    const videoQualities = ["1080", "720", "480", "360", "240", "144"];
-    for (const q of videoQualities) {
+    for (const q of ["1080", "720", "480", "360", "240", "144"]) {
       const fmt = rawFormats.find(
-        (f) =>
-          typeof f.height === "number" &&
-          f.height.toString().includes(q) &&
-          f.vcodec !== "none" &&
-          f.acodec !== "none"
+        (f) => typeof f.height === "number" && f.height.toString().includes(q) && f.vcodec !== "none"
       );
       if (fmt && !seen.has(q)) {
         seen.add(q);
-        const ext = typeof fmt.ext === "string" ? fmt.ext : "mp4";
         formats.push({
           id: `video_${q}p`,
           label: `${q}p HD`,
           quality: `${q}p`,
-          ext,
+          ext: typeof fmt.ext === "string" ? fmt.ext : "mp4",
           filesize: typeof fmt.filesize === "number" ? fmt.filesize : null,
           type: "video",
         });
@@ -162,26 +190,7 @@ router.post("/info", async (req, res) => {
     }
 
     if (formats.length === 0) {
-      const bestVideo = rawFormats.find((f) => f.vcodec !== "none" && f.acodec !== "none");
-      if (bestVideo) {
-        formats.push({
-          id: "video_best",
-          label: "Best Quality",
-          quality: "best",
-          ext: typeof bestVideo.ext === "string" ? bestVideo.ext : "mp4",
-          filesize: typeof bestVideo.filesize === "number" ? bestVideo.filesize : null,
-          type: "video",
-        });
-      } else {
-        formats.push({
-          id: "video_best",
-          label: "Best Quality",
-          quality: "best",
-          ext: "mp4",
-          filesize: null,
-          type: "video",
-        });
-      }
+      formats.push({ id: "video_best", label: "Best Quality", quality: "best", ext: "mp4", filesize: null, type: "video" });
     }
 
     formats.push({ id: "audio_mp3", label: "MP3 Audio", quality: "128kbps", ext: "mp3", filesize: null, type: "audio" });
@@ -203,6 +212,9 @@ router.post("/info", async (req, res) => {
   }
 });
 
+/* ─────────────────────────────────────────────────────────────
+   STREAM (for video player preview)
+───────────────────────────────────────────────────────────── */
 router.post("/stream", async (req, res) => {
   try {
     const { url } = req.body as { url?: string };
@@ -210,11 +222,11 @@ router.post("/stream", async (req, res) => {
       res.status(400).json({ error: "validation_error", message: "URL required" });
       return;
     }
+    const extra = youtubeExtraArgs(url);
     const safeUrl = url.replace(/"/g, '\\"');
-    const cmd = `yt-dlp -f "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio/best" --get-url --no-playlist --socket-timeout 30 "${safeUrl}"`;
+    const cmd = `${YTDLP} -f "best[ext=mp4]/best" --get-url --no-playlist --socket-timeout 30 ${extra}"${safeUrl}"`;
     const result = await execAsync(cmd, { timeout: 60000 });
-    const lines = result.stdout.trim().split("\n").filter(Boolean);
-    const streamUrl = lines[0];
+    const streamUrl = result.stdout.trim().split("\n")[0];
     if (!streamUrl) {
       res.status(400).json({ error: "no_url", message: "No stream URL available" });
       return;
@@ -226,6 +238,9 @@ router.post("/stream", async (req, res) => {
   }
 });
 
+/* ─────────────────────────────────────────────────────────────
+   DOWNLOAD — server-side download then stream to client
+───────────────────────────────────────────────────────────── */
 router.post("/start", async (req, res) => {
   try {
     const parsed = StartDownloadBody.safeParse(req.body);
@@ -235,71 +250,98 @@ router.post("/start", async (req, res) => {
     }
 
     const { url, formatId, type } = parsed.data;
+    await ensureTmpDir();
+    cleanupOldFiles();  // async, don't await
+
+    const extra = youtubeExtraArgs(url);
+    const safeUrl = url.replace(/"/g, '\\"');
+    const tmpId = `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const outputTemplate = join(TMP_DIR, `${tmpId}.%(ext)s`);
 
     let ytdlpArgs: string;
-    let ext: string;
+    let preferredExt: string;
 
     if (type === "audio" || formatId.startsWith("audio_")) {
       const audioExt = formatId === "audio_m4a" ? "m4a" : "mp3";
-      ext = audioExt;
+      preferredExt = audioExt;
       ytdlpArgs = `-x --audio-format ${audioExt} --audio-quality 0`;
     } else {
-      ext = "mp4";
+      preferredExt = "mp4";
       if (formatId === "video_best") {
-        ytdlpArgs = `-f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4`;
+        ytdlpArgs = `-f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best" --merge-output-format mp4`;
       } else {
         const quality = formatId.replace("video_", "").replace("p", "");
-        ytdlpArgs = `-f "bestvideo[height<=${quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${quality}][ext=mp4]/best[height<=${quality}]" --merge-output-format mp4`;
+        ytdlpArgs = `-f "bestvideo[height<=${quality}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=${quality}]+bestaudio/best[height<=${quality}]/best" --merge-output-format mp4`;
       }
     }
 
-    const safeUrl = url.replace(/"/g, '\\"');
-    const cmd = `yt-dlp ${ytdlpArgs} --no-playlist --get-url --socket-timeout 30 "${safeUrl}"`;
+    /* ── Actually download the file to disk ── */
+    const dlCmd = `${YTDLP} ${ytdlpArgs} ${extra}--no-playlist --socket-timeout 60 -o "${outputTemplate}" "${safeUrl}"`;
+    req.log.info({ dlCmd, url }, "Starting download");
 
-    let downloadUrl: string;
     try {
-      const result = await execAsync(cmd, { timeout: 60000 });
-      downloadUrl = result.stdout.trim().split("\n")[0];
-    } catch {
-      const fallbackCmd = `yt-dlp -f best --get-url --no-playlist --socket-timeout 30 "${safeUrl}"`;
-      try {
-        const fallback = await execAsync(fallbackCmd, { timeout: 60000 });
-        downloadUrl = fallback.stdout.trim().split("\n")[0];
-        ext = "mp4";
-      } catch (fallbackErr) {
-        req.log.error({ fallbackErr, url }, "yt-dlp get-url failed");
-        res.status(400).json({
-          error: "download_failed",
-          message: "Could not generate download link. Please try again.",
-        });
-        return;
-      }
+      await execAsync(dlCmd, { timeout: 5 * 60 * 1000 }); // 5 min max
+    } catch (dlErr: unknown) {
+      req.log.warn({ dlErr, url }, "Primary download failed, trying fallback");
+      // Fallback: just best available
+      const fallbackCmd = `${YTDLP} ${extra}--no-playlist --socket-timeout 60 -o "${outputTemplate}" "${safeUrl}"`;
+      await execAsync(fallbackCmd, { timeout: 5 * 60 * 1000 });
     }
 
-    if (!downloadUrl) {
-      res.status(400).json({ error: "no_url", message: "No download URL available for this format." });
+    /* ── Find the downloaded file ── */
+    const files = await readdir(TMP_DIR);
+    const dlFile = files.find((f) => f.startsWith(tmpId));
+    if (!dlFile) {
+      res.status(500).json({ error: "file_not_found", message: "Download failed: file not found" });
       return;
     }
 
-    const titleResult = await execAsync(
-      `yt-dlp --get-title --no-playlist --socket-timeout 30 "${safeUrl}"`,
-      { timeout: 30000 }
-    ).catch(() => ({ stdout: "video" }));
+    const filePath = join(TMP_DIR, dlFile);
+    const ext = dlFile.split(".").pop() || preferredExt;
 
-    const rawTitle = titleResult.stdout.trim().split("\n")[0] || "video";
-    const safeTitle = rawTitle.replace(/[^a-zA-Z0-9\s-]/g, "").trim().slice(0, 50) || "video";
+    /* ── Sanitize filename from title ── */
+    let safeTitle = "video";
+    try {
+      const titleResult = await execAsync(
+        `${YTDLP} --get-title --no-playlist --socket-timeout 20 ${extra}"${safeUrl}"`,
+        { timeout: 30000 }
+      );
+      safeTitle = titleResult.stdout.trim().split("\n")[0]
+        .replace(/[^\w\s-]/g, "")
+        .trim()
+        .slice(0, 60) || "video";
+    } catch { /* ignore */ }
+
     const filename = `${safeTitle}.${ext}`;
 
-    const result = StartDownloadResponse.parse({
-      downloadUrl,
-      filename,
-      message: "Download link generated successfully",
+    /* ── Stream the file to the browser ── */
+    const stat = statSync(filePath);
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Content-Length", stat.size);
+    res.setHeader("Cache-Control", "no-cache");
+
+    const stream = createReadStream(filePath);
+    stream.pipe(res);
+    stream.on("end", () => {
+      unlink(filePath).catch(() => {});
+    });
+    stream.on("error", () => {
+      unlink(filePath).catch(() => {});
     });
 
-    res.json(result);
-  } catch (err) {
-    req.log.error({ err }, "Error starting download");
-    res.status(500).json({ error: "internal_error", message: "An internal error occurred" });
+  } catch (err: unknown) {
+    req.log.error({ err, body: req.body }, "Error in /start download");
+    if (!res.headersSent) {
+      const msg = err instanceof Error ? err.message : "Download failed";
+      const isYtError = msg.includes("nsig") || msg.includes("SABR") || msg.includes("format");
+      res.status(400).json({
+        error: "download_failed",
+        message: isYtError
+          ? "This video cannot be downloaded due to platform restrictions. Try a different quality."
+          : "Download failed. Please try again.",
+      });
+    }
   }
 });
 

@@ -203,6 +203,29 @@ router.post("/info", async (req, res) => {
   }
 });
 
+router.post("/stream", async (req, res) => {
+  try {
+    const { url } = req.body as { url?: string };
+    if (!url || typeof url !== "string") {
+      res.status(400).json({ error: "validation_error", message: "URL required" });
+      return;
+    }
+    const safeUrl = url.replace(/"/g, '\\"');
+    const cmd = `yt-dlp -f "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio/best" --get-url --no-playlist --socket-timeout 30 "${safeUrl}"`;
+    const result = await execAsync(cmd, { timeout: 60000 });
+    const lines = result.stdout.trim().split("\n").filter(Boolean);
+    const streamUrl = lines[0];
+    if (!streamUrl) {
+      res.status(400).json({ error: "no_url", message: "No stream URL available" });
+      return;
+    }
+    res.json({ streamUrl });
+  } catch (err) {
+    req.log.error({ err }, "Error getting stream URL");
+    res.status(500).json({ error: "internal_error", message: "Could not get stream URL" });
+  }
+});
+
 router.post("/start", async (req, res) => {
   try {
     const parsed = StartDownloadBody.safeParse(req.body);

@@ -7,87 +7,71 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
     steps:
-      # Checkout
+      # 1. Checkout
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # Node setup
+      # 2. Setup Node
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      # pnpm install
+      # 3. Install pnpm
       - name: Install pnpm
         run: npm install -g pnpm
 
-      # Dependencies
+      # 4. Install dependencies
       - name: Install Dependencies
         run: pnpm install
 
-      # Build web (with fallback)
+      # 5. Build Web (SAFE)
       - name: Build Web Project
         run: |
           pnpm build || true
 
-          if [ ! -d "dist" ]; then
-            mkdir dist
-          fi
+          mkdir -p dist
 
-          if [ ! -f "dist/index.html" ]; then
-            cat <<EOF > dist/index.html
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <meta charset="UTF-8">
-              <title>App</title>
-            </head>
-            <body>
-              <h1>App Running</h1>
-            </body>
-            </html>
-            EOF
-          fi
+          echo '<!DOCTYPE html>' > dist/index.html
+          echo '<html>' >> dist/index.html
+          echo '<head><meta charset="UTF-8"><title>App</title></head>' >> dist/index.html
+          echo '<body><h1>App Running</h1></body>' >> dist/index.html
+          echo '</html>' >> dist/index.html
 
-      # Java
+      # 6. Setup Java
       - name: Setup JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      # Android SDK
+      # 7. Setup Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # Capacitor setup
+      # 8. Setup Capacitor (SAFE)
       - name: Setup Capacitor
         run: |
           pnpm add -w @capacitor/core @capacitor/cli @capacitor/android
 
-          cat <<EOF > capacitor.config.json
-          {
+          echo '{
             "appId": "com.ec.app",
-            "appName": "ShourovHub",
+            "appName": "TestApps",
             "webDir": "dist"
-          }
-          EOF
+          }' > capacitor.config.json
 
           npx cap add android || true
           npx cap sync android
 
-      # Build APK
+      # 9. Build APK
       - name: Build Android APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleDebug
 
-      # Upload APK
+      # 10. Upload APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:

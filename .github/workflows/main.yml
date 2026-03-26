@@ -11,47 +11,48 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      # 1. Checkout
+      # 1. Checkout code
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. Setup Node (latest stable)
+      # 2. Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      # 3. Install dependencies
+      # 3. Install pnpm
       - name: Install pnpm
-  run: npm install -g pnpm
+        run: npm install -g pnpm
 
-- name: Install Dependencies
-  run: pnpm install
+      # 4. Install dependencies (pnpm)
+      - name: Install Dependencies
+        run: pnpm install
 
-      # 4. Build web app
+      # 5. Build web project
       - name: Build Web Project
         run: |
-          npm run build
+          pnpm build
           if [ ! -d "dist" ]; then
-            echo "❌ dist folder not found! Build failed."
+            echo "❌ dist folder not found!"
             exit 1
           fi
 
-      # 5. Setup Java (Android requires stable version)
+      # 6. Setup Java (Android প্রয়োজন)
       - name: Setup JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      # 6. Setup Android SDK
+      # 7. Setup Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 7. Setup Capacitor
+      # 8. Setup Capacitor
       - name: Setup Capacitor
         run: |
-          npm install @capacitor/core @capacitor/cli @capacitor/android
+          pnpm add @capacitor/core @capacitor/cli @capacitor/android
 
           cat <<EOF > capacitor.config.json
           {
@@ -64,22 +65,22 @@ jobs:
           npx cap add android || true
           npx cap sync android
 
-      # 8. Debug: show files (very helpful)
-      - name: Debug Project Structure
+      # 9. Debug (optional but helpful)
+      - name: Debug Files
         run: |
-          echo "📁 Root files:"
+          echo "Root:"
           ls -la
-          echo "📁 Dist files:"
+          echo "Dist:"
           ls -la dist || true
 
-      # 9. Build APK
+      # 10. Build APK
       - name: Build Android APK
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
 
-      # 10. Upload APK
+      # 11. Upload APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:

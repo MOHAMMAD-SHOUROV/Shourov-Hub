@@ -8,29 +8,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. Setup Node
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      # 3. Install pnpm
       - name: Install pnpm
         run: npm install -g pnpm
 
-      # 4. Install dependencies
       - name: Install Dependencies
         run: pnpm install
 
-      # 5. Build Web (SAFE)
       - name: Build Web Project
         run: |
           pnpm build || true
-
           mkdir -p dist
 
           echo '<!DOCTYPE html>' > dist/index.html
@@ -39,39 +33,35 @@ jobs:
           echo '<body><h1>App Running</h1></body>' >> dist/index.html
           echo '</html>' >> dist/index.html
 
-      # 6. Setup Java
+      # ✅ FIXED JAVA VERSION
       - name: Setup JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
-      # 7. Setup Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 8. Setup Capacitor (SAFE)
       - name: Setup Capacitor
         run: |
           pnpm add -w @capacitor/core @capacitor/cli @capacitor/android
 
           echo '{
             "appId": "com.ec.app",
-            "appName": "TestApps",
+            "appName": "TestApp",
             "webDir": "dist"
           }' > capacitor.config.json
 
           npx cap add android || true
           npx cap sync android
 
-      # 9. Build APK
       - name: Build Android APK
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
 
-      # 10. Upload APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
